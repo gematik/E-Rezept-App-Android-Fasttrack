@@ -1,0 +1,6 @@
+@Library('gematik-jenkins-shared-library') _
+pipelineGitHubPublish {
+    GITHUB_PROJECT_NAME = 'E-Rezept-App-Android-Fasttrack'
+    GEMATIK_PROJECT_NAME = 'erezept/app/erp-app-android.git'
+    LICENSE = 'EUPL_1_2'
+}

@@ -18,23 +18,31 @@
 
 package de.gematik.ti.erp.app.core
 
+import android.net.Uri
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.gematik.ti.erp.app.MainActivity
 import de.gematik.ti.erp.app.attestation.usecase.SafetynetUseCase
 import de.gematik.ti.erp.app.featuretoggle.FeatureToggleManager
 import de.gematik.ti.erp.app.featuretoggle.Features
+import de.gematik.ti.erp.app.idp.usecase.IdpUseCase
+import de.gematik.ti.erp.app.prescription.usecase.PrescriptionUseCase
 import de.gematik.ti.erp.app.settings.usecase.SettingsUseCase
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlinx.coroutines.delay
+import timber.log.Timber
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val settingsUseCase: SettingsUseCase,
     private val safetynetUseCase: SafetynetUseCase,
-    private val featureToggleManager: FeatureToggleManager
+    private val featureToggleManager: FeatureToggleManager,
+    private val idpUseCase: IdpUseCase,
+    private val prescriptionUseCase: PrescriptionUseCase
 ) : BaseViewModel() {
+    var externalAuthorizationUri: Uri? = null
     val zoomEnabled by settingsUseCase::zoomEnabled
     val authenticationMethod by settingsUseCase::authenticationMethod
     var isNewUser by settingsUseCase::isNewUser
@@ -91,6 +99,14 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             settingsUseCase.overwriteDefaultProfileName(profileName)
             settingsUseCase.activateProfile(profileName)
+        }
+    }
+
+    fun onExternAppAuthorizationResult(uri:Uri){
+        Timber.d(uri.toString())
+        viewModelScope.launch{
+            idpUseCase.authenticateWithExternalAppAuthorization(uri)
+            prescriptionUseCase.downloadTasks()
         }
     }
 }

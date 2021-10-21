@@ -51,4 +51,10 @@
             <pin digest="SHA-256">e0IRz5Tio3GA1Xs4fUVWmH1xHDiH2dMbVtCBSkOIdqM=</pin>
         </pin-set>
     </domain-config>
+
+<!--    TODO: Needs to be removed before merging -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">gstopdh2.top.local</domain>
+    </domain-config>
+
 </network-security-config>

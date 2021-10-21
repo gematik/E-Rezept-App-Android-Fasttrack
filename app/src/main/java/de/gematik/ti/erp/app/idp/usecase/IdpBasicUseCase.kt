@@ -26,6 +26,7 @@ import de.gematik.ti.erp.app.db.entities.IdpConfiguration
 import de.gematik.ti.erp.app.generateRandomAES256Key
 import de.gematik.ti.erp.app.idp.EllipticCurvesExtending
 import de.gematik.ti.erp.app.idp.api.IdpService
+import de.gematik.ti.erp.app.idp.api.REDIRECT_URI
 import de.gematik.ti.erp.app.idp.api.models.JWSPublicKey
 import de.gematik.ti.erp.app.idp.api.models.TokenResponse
 import de.gematik.ti.erp.app.idp.buildJsonWebSignatureWithHealthCard
@@ -58,6 +59,7 @@ import java.time.Instant
 import javax.crypto.SecretKey
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
 
 private val discoveryDocumentMaxValidityMinutes: Int = Duration.ofHours(24).toMinutes().toInt()
 private val discoveryDocumentMaxValiditySeconds: Int = Duration.ofHours(24).seconds.toInt()
@@ -112,8 +114,19 @@ value class IdpNonce(val nonce: String) {
     operator fun component1(): String = nonce
 
     companion object {
-        fun create() = IdpNonce(generateRandomUrlSafeStringSecure(32))
+        fun create() = IdpNonce(
+            //getRandomString(32)
+            //generateRandomHexString()
+            generateRandomUrlSafeStringSecure(32)
+        )
     }
+}
+
+fun getRandomString(length: Int) : String {
+    val allowedChars = ('A'..'F') + ('0'..'9')
+    return (1..length)
+        .map { allowedChars.random() }
+        .joinToString("")
 }
 
 internal fun generateRandomUrlSafeStringSecure(outLength: Int = 32): String {
@@ -214,6 +227,7 @@ class IdpBasicUseCase @Inject constructor(
         // generate state & nonce used to verify the integrity of certain calls
         val state = IdpState.create()
         val nonce = IdpNonce.create()
+        Timber.d("Nonce generated: ${nonce.nonce}")
 
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
@@ -264,11 +278,16 @@ class IdpBasicUseCase @Inject constructor(
 
         // sign [challengeBody] with the health card
 
-        val signedChallenge = buildSignedChallenge(challengeData.challenge.signedChallenge, healthCardCertificate) {
-            sign(it)
-        }
+        val signedChallenge =
+            buildSignedChallenge(challengeData.challenge.signedChallenge, healthCardCertificate) {
+                sign(it)
+            }
         val encryptedSignedChallenge =
-            buildEncryptedSignedChallenge(signedChallenge, challengeData.challenge.expires, pukEncKey.jws.publicKey)
+            buildEncryptedSignedChallenge(
+                signedChallenge,
+                challengeData.challenge.expires,
+                pukEncKey.jws.publicKey
+            )
 
         // post encrypted signed challenge & parse returned redirect url
 
@@ -420,7 +439,11 @@ class IdpBasicUseCase @Inject constructor(
 
         val unsignedChallengeExpires = (unsignedChallengeJson["exp"] as Int).toLong()
 
-        return IdpUnsignedChallenge(signedChallenge.raw, unsignedChallenge, unsignedChallengeExpires)
+        return IdpUnsignedChallenge(
+            signedChallenge.raw,
+            unsignedChallenge,
+            unsignedChallengeExpires
+        )
     }
 
     suspend fun postCodeAndDecryptAccessToken(
@@ -429,7 +452,8 @@ class IdpBasicUseCase @Inject constructor(
         codeVerifier: String,
         code: String,
         pukEncKey: JWSPublicKey,
-        pukSigKey: JWSPublicKey
+        pukSigKey: JWSPublicKey,
+        redirectUri: String = REDIRECT_URI
     ): String {
         val symmetricalKey = generateRandomAES256Key()
 
@@ -439,9 +463,18 @@ class IdpBasicUseCase @Inject constructor(
             pukEncKey.jws.publicKey
         )
 
-        return when (val r = repository.postToken(url, keyVerifier.compactSerialization, code)) {
+        return when (val r = repository.postToken(
+            url = url,
+            keyVerifier = keyVerifier.compactSerialization,
+            code = code,
+            redirectUri = redirectUri
+        )) {
             is Result.Success -> {
-                checkNonce(decryptIdToken(r.data, symmetricalKey), pukSigKey.jws.publicKey, nonce.nonce)
+                checkNonce(
+                    decryptIdToken(r.data, symmetricalKey),
+                    pukSigKey.jws.publicKey,
+                    nonce.nonce
+                )
 
                 val json = decryptAccessToken(r.data, symmetricalKey)
                 JSONObject(json)["njwt"] as String
@@ -530,7 +563,9 @@ class IdpBasicUseCase @Inject constructor(
      * Compares the contained nonce with [nonce] after checking the signature of the JWS.
      */
     private fun checkNonce(idToken: JsonWebSignature, idpPukSigKey: PublicKey, nonce: String) {
-        require(JSONObject(idToken.apply { key = idpPukSigKey }.payload).getString("nonce") == nonce)
+        require(JSONObject(idToken.apply {
+            key = idpPukSigKey
+        }.payload).getString("nonce") == nonce)
     }
 
     private fun decryptAccessToken(data: TokenResponse, symmetricalKey: SecretKey): String =

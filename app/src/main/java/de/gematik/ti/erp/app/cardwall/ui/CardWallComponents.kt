@@ -22,7 +22,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.nfc.Tag
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.biometric.BiometricManager
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -129,6 +128,7 @@ import de.gematik.ti.erp.app.cardwall.usecase.AuthenticationState
 import de.gematik.ti.erp.app.core.LocalActivity
 import de.gematik.ti.erp.app.demo.ui.DemoBanner
 import de.gematik.ti.erp.app.orderhealthcard.ui.HealthCardContactOrderScreen
+import de.gematik.ti.erp.app.mainscreen.ui.MainNavigationScreens
 import de.gematik.ti.erp.app.theme.AppTheme
 import de.gematik.ti.erp.app.theme.PaddingDefaults
 import de.gematik.ti.erp.app.theme.PaddingDefaults.Medium
@@ -154,9 +154,7 @@ import de.gematik.ti.erp.app.utils.compose.SpacerMedium
 import de.gematik.ti.erp.app.utils.compose.annotatedPluralsResource
 import de.gematik.ti.erp.app.utils.compose.navigationModeState
 import de.gematik.ti.erp.app.utils.compose.testId
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
@@ -165,16 +163,19 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.retry
 import kotlinx.coroutines.flow.transformLatest
-import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.withContext
 
 private val framePadding = PaddingValues(start = 16.dp, top = 24.dp, end = 16.dp, bottom = 24.dp)
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun CardWallScreen(mainNavController: NavController, viewModel: CardWallViewModel = hiltViewModel()) {
+fun CardWallScreen(
+    mainNavController: NavController,
+    viewModel: CardWallViewModel = hiltViewModel()
+) {
     val navController = rememberNavController()
 
     val state by viewModel.state().collectAsState(viewModel.defaultState)
@@ -250,7 +251,8 @@ fun CardWallScreen(mainNavController: NavController, viewModel: CardWallViewMode
                 },
                 onNext = {
                     if (navSelection == CardWallSwitchNavigation.INSURANCE_APP) {
-                        Toast.makeText(context, "This feature coming soon.", Toast.LENGTH_LONG).show()
+                        navController.navigate(CardWallNavigation.ExternalAuthenticator.path())
+                        //Toast.makeText(context, "This feature coming soon.", Toast.LENGTH_LONG).show()
                     } else
                         navController.navigate(mapCardWallNavigation(navSelection).path())
                 },
@@ -290,11 +292,12 @@ fun CardWallScreen(mainNavController: NavController, viewModel: CardWallViewMode
                         else ->
                             false
                     }
-                    val deviceSupportsStrongbox = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
-                    } else {
-                        false
-                    }
+                    val deviceSupportsStrongbox =
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
+                        } else {
+                            false
+                        }
                     if (deviceSupportsBiometric &&
                         deviceSupportsStrongbox &&
                         state.selectedAuthenticationMethod == CardWallData.AuthenticationMethod.None
@@ -354,6 +357,11 @@ fun CardWallScreen(mainNavController: NavController, viewModel: CardWallViewMode
                 Outro(demoMode = state.demoMode) {
                     mainNavController.popBackStack()
                 }
+            }
+        }
+        composable(CardWallNavigation.ExternalAuthenticator.route){
+            NavigationAnimation(mode = navigationMode) {
+                ExternalAuthenticatorListScreen(navController)
             }
         }
     }
@@ -963,7 +971,11 @@ sealed class ToggleAuth {
     data class ToggleByHealthCard(val tag: Tag) : ToggleAuth()
 }
 
-@OptIn(ExperimentalMaterialApi::class, ExperimentalAnimationApi::class, ExperimentalCoroutinesApi::class)
+@OptIn(
+    ExperimentalMaterialApi::class,
+    ExperimentalAnimationApi::class,
+    ExperimentalCoroutinesApi::class
+)
 @Composable
 private fun Authentication(
     viewModel: CardWallViewModel,
@@ -1352,8 +1364,15 @@ fun CardWallBottomBar(
 ) {
     BottomAppBar(backgroundColor = MaterialTheme.colors.surface) {
         Spacer(modifier = Modifier.weight(1f))
-        Button(onClick = onNext, enabled = nextEnabled, modifier = Modifier.testTag("cardWall/next")) {
-            Text(nextText.uppercase(Locale.getDefault()), modifier = Modifier.testId("cdw_btn_next"))
+        Button(
+            onClick = onNext,
+            enabled = nextEnabled,
+            modifier = Modifier.testTag("cardWall/next")
+        ) {
+            Text(
+                nextText.uppercase(Locale.getDefault()),
+                modifier = Modifier.testId("cdw_btn_next")
+            )
         }
         Spacer8()
     }

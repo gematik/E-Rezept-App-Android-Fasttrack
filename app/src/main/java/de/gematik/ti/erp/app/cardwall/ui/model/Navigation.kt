@@ -21,6 +21,7 @@ package de.gematik.ti.erp.app.cardwall.ui.model
 import de.gematik.ti.erp.app.Route
 
 object CardWallNavigation {
+    object ExternalAuthenticator: Route("ExternalAuthenticatorOverview")
     object Intro : Route("CardWallIntro")
     object CardAccessNumber : Route("CardWallCardAccessNumber")
     object PersonalIdentificationNumber : Route("CardWallPersonalIdentificationNumber")

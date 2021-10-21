@@ -37,6 +37,7 @@ class JWSConverterFactory : Converter.Factory() {
         retrofit: Retrofit
     ): Converter<ResponseBody, *>? =
         when (type) {
+            JsonWebSignature::class.javaObjectType -> JsonWebSignatureConverter()
             JWSDiscoveryDocument::class.javaObjectType -> JWSDiscoveryDocumentConverter()
             JWSKey::class.javaObjectType -> JWSKeyConverter()
             JWSPublicKey::class.javaObjectType -> JWSPublicKeyConverter()
@@ -51,6 +52,14 @@ class JWSDiscoveryDocumentConverter : Converter<ResponseBody, JWSDiscoveryDocume
                 value.string()
             ) as JsonWebSignature
         )
+    }
+}
+
+class JsonWebSignatureConverter : Converter<ResponseBody, JsonWebSignature> {
+    override fun convert(value: ResponseBody): JsonWebSignature {
+        return JsonWebStructure.fromCompactSerialization(
+                value.string()
+            )as JsonWebSignature
     }
 }
 

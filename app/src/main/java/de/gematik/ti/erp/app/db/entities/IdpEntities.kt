@@ -37,11 +37,20 @@ data class IdpConfiguration(
     val pukIdpSigEndpoint: String,
     val certificate: X509CertificateHolder,
     val expirationTimestamp: Instant,
-    val issueTimestamp: Instant
+    val issueTimestamp: Instant,
+    val externalAuthorizationIDsEndpoint: String,
+    val thirdPartyAuthorizationEndpoint: String
 ) {
     @PrimaryKey
     var id: Int = 0
 }
+
+@Entity(tableName = "authenticationId")
+data class AuthenticationID(
+    val name: String,
+    @PrimaryKey
+    val authId: String
+)
 
 @Entity(
     foreignKeys = [

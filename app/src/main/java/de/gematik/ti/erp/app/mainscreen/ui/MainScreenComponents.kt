@@ -74,6 +74,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.google.mlkit.common.sdkinternal.MlKitContext
 import de.gematik.ti.erp.app.R
+import de.gematik.ti.erp.app.cardwall.ui.ExternalAuthenticatorListScreen
 import de.gematik.ti.erp.app.cardwall.ui.CardWallScreen
 import de.gematik.ti.erp.app.core.LocalActivity
 import de.gematik.ti.erp.app.core.MainViewModel

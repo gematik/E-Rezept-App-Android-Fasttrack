@@ -23,6 +23,8 @@ import de.gematik.ti.erp.app.api.Result
 import de.gematik.ti.erp.app.api.safeApiCall
 import de.gematik.ti.erp.app.api.safeApiCallRaw
 import de.gematik.ti.erp.app.idp.api.IdpService
+import de.gematik.ti.erp.app.idp.api.REDIRECT_URI
+import de.gematik.ti.erp.app.idp.usecase.IdpUseCase
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.net.HttpURLConnection
@@ -43,6 +45,30 @@ class IdpRemoteDataSource @Inject constructor(
 
     suspend fun fetchIdpPukEnc(url: String) =
         safeApiCall("error fetching idpPucEnc") { service.idpPukEnc(url) }
+
+    suspend fun fetchExternalAuthorizationIDList(url: String) =
+        safeApiCall("error fetching external authentication ID List from $url") {
+            service.externalAuthenticationIDList(
+                url
+            )
+        }
+
+    suspend fun requestAuthorizationRedirect(
+        url: String,
+        externalAppId: String,
+        nonce: String,
+        state: String,
+        codeChallenge: String,
+    ) = postToEndpointExpectingLocationRedirect {
+        service.requestAuthenticationRedirect(
+            url,
+            externalAppId = externalAppId,
+            codeChallenge = codeChallenge,
+            nonce = nonce,
+            state = state
+        )
+    }
+
 
     suspend fun fetchChallenge(
         url: String,
@@ -66,14 +92,47 @@ class IdpRemoteDataSource @Inject constructor(
             service.pairing(url, "Bearer $token", encryptedRegistrationData)
         }
 
+    /**
+     * Authorization with Card
+     */
     suspend fun postChallenge(url: String, signedChallenge: String) =
         postToEndpointExpectingLocationRedirect { service.authorization(url, signedChallenge) }
 
-    suspend fun postChallenge(url: String, ssoToken: String, unsignedChallenge: String) =
-        postToEndpointExpectingLocationRedirect { service.ssoToken(url, ssoToken, unsignedChallenge) }
 
-    suspend fun postAuthenticationData(url: String, encryptedSignedAuthenticationData: String) =
-        postToEndpointExpectingLocationRedirect { service.authenticate(url, encryptedSignedAuthenticationData) }
+    suspend fun postChallenge(url: String, ssoToken: String, unsignedChallenge: String) =
+        postToEndpointExpectingLocationRedirect {
+            service.ssoToken(
+                url,
+                ssoToken,
+                unsignedChallenge
+            )
+        }
+
+    /**
+     * Authorization with External App
+     */
+    suspend fun authorizeExtern(
+        url: String,
+        externalAuthorizationData: IdpUseCase.ExternalAuthorizationData
+    ) = postToEndpointExpectingLocationRedirect {
+            service.externalAuthorization(
+                url = url,
+                code = externalAuthorizationData.code,
+                state = externalAuthorizationData.state,
+                kk_app_redirect_uri = externalAuthorizationData.kkAppRedirectUri
+            )
+        }
+
+    /**
+     * Authorization with Biometrics
+     */
+    suspend fun authorizeBiometric(url: String, encryptedSignedAuthenticationData: String) =
+        postToEndpointExpectingLocationRedirect {
+            service.authenticate(
+                url,
+                encryptedSignedAuthenticationData
+            )
+        }
 
     private suspend inline fun postToEndpointExpectingLocationRedirect(crossinline call: suspend () -> Response<ResponseBody>) =
         safeApiCallRaw("error posting to redirecting endpoint") {
@@ -85,7 +144,10 @@ class IdpRemoteDataSource @Inject constructor(
                 Result.Success(location)
             } else {
                 Result.Error(
-                    ApiCallException("Expected redirect ${response.code()} ${response.message()}", response)
+                    ApiCallException(
+                        "Expected redirect ${response.code()} ${response.message()}",
+                        response
+                    )
                 )
             }
         }
@@ -94,11 +156,13 @@ class IdpRemoteDataSource @Inject constructor(
         url: String,
         keyVerifier: String,
         code: String,
+        redirectUri:String = REDIRECT_URI
     ) = safeApiCall("error posting for token") {
         service.token(
             url = url,
             keyVerifier = keyVerifier,
-            code = code
+            code = code,
+            redirectUri = redirectUri
         )
     }
 }

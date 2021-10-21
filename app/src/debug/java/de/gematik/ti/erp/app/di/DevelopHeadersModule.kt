@@ -36,6 +36,8 @@ object DevelopHeadersModule {
         val request: Request =
             chain.request().newBuilder()
                 .header("X-Api-Key", BuildConfig.ERP_API_KEY)
+                .header("X-Authorization", "FsMxoUGiJZowZ99lg7AfFYZl9/oEZ8jpMvCuMDhbAKE=")
+                //.header("X-Auth", "MTRqU2cwPXx+Pit4aCVUT2pNVVN2VDllPj1cUUUqCg==")
                 .build()
         chain.proceed(request)
     }

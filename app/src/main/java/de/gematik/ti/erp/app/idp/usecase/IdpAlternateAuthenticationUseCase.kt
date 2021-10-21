@@ -20,6 +20,7 @@ package de.gematik.ti.erp.app.idp.usecase
 
 import android.net.Uri
 import com.squareup.moshi.Moshi
+import de.gematik.ti.erp.app.MainActivity
 import de.gematik.ti.erp.app.api.Result
 import de.gematik.ti.erp.app.idp.api.IdpService
 import de.gematik.ti.erp.app.idp.api.models.AuthenticationData
@@ -186,7 +187,7 @@ class IdpAlternateAuthenticationUseCase @Inject constructor(
     ): Uri {
         val redirect = when (
             val r =
-                repository.postAlternateAuthenticationData(url, codeChallenge.compactSerialization)
+                repository.postBiometricAuthenticationData(url, codeChallenge.compactSerialization)
         ) {
             is Result.Success -> {
                 Uri.parse(r.data)

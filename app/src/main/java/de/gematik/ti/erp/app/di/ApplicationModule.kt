@@ -33,6 +33,7 @@ import de.gematik.ti.erp.app.attestation.AttestationReportGenerator
 import de.gematik.ti.erp.app.attestation.SafetyNetAttestationReportGenerator
 import de.gematik.ti.erp.app.attestation.SafetynetAttestation
 import javax.inject.Qualifier
+import javax.inject.Singleton
 
 const val PREFERENCES_FILE_NAME = "appPrefs"
 const val DEMO_PREFERENCES_FILE_NAME = "appDemoPrefs"

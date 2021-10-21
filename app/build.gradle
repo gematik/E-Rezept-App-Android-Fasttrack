@@ -87,17 +87,21 @@ android {
             override(overrideProperties, 'BASE_SERVICE_URI_PU') { BASE_SERVICE_URI_PU = it }
             override(overrideProperties, 'BASE_SERVICE_URI_TU') { BASE_SERVICE_URI_TU = it }
             override(overrideProperties, 'BASE_SERVICE_URI_RU') { BASE_SERVICE_URI_RU = it }
+            override(overrideProperties, 'BASE_SERVICE_URI_TR') { BASE_SERVICE_URI_TR = it }
 
             override(overrideProperties, 'IDP_SERVICE_URI_PU') { IDP_SERVICE_URI_PU = it }
             override(overrideProperties, 'IDP_SERVICE_URI_TU') { IDP_SERVICE_URI_TU = it }
             override(overrideProperties, 'IDP_SERVICE_URI_RU') { IDP_SERVICE_URI_RU = it }
+            override(overrideProperties, 'IDP_SERVICE_URI_TR') { IDP_SERVICE_URI_TR = it }
 
             override(overrideProperties, 'ERP_API_KEY_GOOGLE_PU') { ERP_API_KEY_GOOGLE_PU = it }
             override(overrideProperties, 'ERP_API_KEY_GOOGLE_TU') { ERP_API_KEY_GOOGLE_TU = it }
             override(overrideProperties, 'ERP_API_KEY_GOOGLE_RU') { ERP_API_KEY_GOOGLE_RU = it }
+            override(overrideProperties, 'ERP_API_KEY_GOOGLE_TR') { ERP_API_KEY_GOOGLE_TR = it }
             override(overrideProperties, 'ERP_API_KEY_HUAWEI_PU') { ERP_API_KEY_HUAWEI_PU = it }
             override(overrideProperties, 'ERP_API_KEY_HUAWEI_TU') { ERP_API_KEY_HUAWEI_TU = it }
             override(overrideProperties, 'ERP_API_KEY_HUAWEI_RU') { ERP_API_KEY_HUAWEI_RU = it }
+            override(overrideProperties, 'ERP_API_KEY_HUAWEI_TR') { ERP_API_KEY_HUAWEI_TR = it }
 
             override(overrideProperties, 'PHARMACY_SERVICE_URI') { PHARMACY_SERVICE_URI = it }
             override(overrideProperties, 'PHARMACY_SERVICE_URI_TEST') { PHARMACY_SERVICE_URI_TEST = it }
@@ -241,6 +245,14 @@ android {
             buildConfigField "String", "PHARMACY_SERVICE_URI", "\"$PHARMACY_SERVICE_URI_TEST\""
             buildConfigField "String", "PHARMACY_API_KEY", "\"$PHARMACY_API_KEY_TEST\""
         }
+        create("tr") {
+            dimension = "environment"
+            buildConfigField "String", "BASE_SERVICE_URI", "\"$BASE_SERVICE_URI_TR\""
+            buildConfigField "String", "IDP_SERVICE_URI", "\"$IDP_SERVICE_URI_TR\""
+            buildConfigField "String", "APP_TRUST_ANCHOR_BASE64", "\"$APP_TRUST_ANCHOR_BASE64_TEST\""
+            buildConfigField "String", "PHARMACY_SERVICE_URI", "\"$PHARMACY_SERVICE_URI_TEST\""
+            buildConfigField "String", "PHARMACY_API_KEY", "\"$PHARMACY_API_KEY_TEST\""
+        }
         create("ru") {
             dimension = "environment"
             buildConfigField "String", "BASE_SERVICE_URI", "\"$BASE_SERVICE_URI_RU\""
@@ -257,6 +269,9 @@ android {
             buildConfigField "String", "PIWIK_TRACKER_ID", "\"$PIWIK_TRACKER_ID_GOOGLE\""
         } else if (variant.flavorName.startsWith("googleTu")) {
             buildConfigField "String", "ERP_API_KEY", "\"$ERP_API_KEY_GOOGLE_TU\""
+            buildConfigField "String", "PIWIK_TRACKER_ID", "\"$PIWIK_TRACKER_ID_GOOGLE\""
+        }else if (variant.flavorName.startsWith("googleTr")) {
+            buildConfigField "String", "ERP_API_KEY", "\"$ERP_API_KEY_GOOGLE_TR\""
             buildConfigField "String", "PIWIK_TRACKER_ID", "\"$PIWIK_TRACKER_ID_GOOGLE\""
         } else if (variant.flavorName.startsWith("googleRu")) {
             buildConfigField "String", "ERP_API_KEY", "\"$ERP_API_KEY_GOOGLE_RU\""

@@ -25,6 +25,7 @@ import de.gematik.ti.erp.app.idp.api.models.PairingResponseEntry
 import de.gematik.ti.erp.app.idp.api.models.TokenResponse
 import de.gematik.ti.erp.app.idp.repository.JWSDiscoveryDocument
 import okhttp3.ResponseBody
+import org.jose4j.jws.JsonWebSignature
 import retrofit2.Response
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
@@ -37,9 +38,13 @@ import retrofit2.http.Url
 
 const val REDIRECT_URI = "https://redirect.gematik.de/erezept"
 const val CLIENT_ID = "eRezeptApp"
+const val EXT_AUTH_REDIRECT_URI: String = "https://das-e-rezept-fuer-deutschland.de/extauth"
 
 interface IdpService {
 
+    @Headers(
+        "Accept: application/jwt;charset=UTF-8",
+    )
     @GET("openid-configuration")
     suspend fun discoveryDocument(): Response<JWSDiscoveryDocument>
 
@@ -52,6 +57,26 @@ interface IdpService {
     suspend fun idpPukEnc(
         @Url url: String
     ): Response<JWSPublicKey>
+
+    @GET
+    suspend fun externalAuthenticationIDList(
+        @Url url: String
+    ): Response<JsonWebSignature>
+
+    @GET
+    suspend fun requestAuthenticationRedirect(
+        @Url url: String,
+        @Query("kk_app_id")externalAppId:String,
+        @Query("nonce")nonce: String,
+        @Query("state")state: String,
+        @Query("client_id")clientID:String = "eRezeptApp",
+        @Query("redirect_uri")redirectUri: String = EXT_AUTH_REDIRECT_URI,
+        @Query("code_challenge_method")codeChallengeMethod: String = "S256",
+        @Query("response_type")responseType: String = "code",
+        @Query("scope")scope: String = "e-rezept openid",//"erp_sek_auth+openid"//e-rezept+openid",
+        @Query("code_challenge")codeChallenge: String
+    ): Response<ResponseBody>
+
 
     @GET
     suspend fun fetchTokenChallenge(
@@ -83,11 +108,11 @@ interface IdpService {
     )
     suspend fun token(
         @Url url: String,
-        @Field("key_verifier") keyVerifier: String,
-        @Field("code") code: String,
         @Field("grant_type") grantType: String = "authorization_code",
         @Field("redirect_uri") redirectUri: String = REDIRECT_URI,
         @Field("client_id") clientId: String = CLIENT_ID,
+        @Field("key_verifier") keyVerifier: String,
+        @Field("code") code: String
     ): Response<TokenResponse>
 
     @FormUrlEncoded
@@ -131,6 +156,18 @@ interface IdpService {
         @Url url: String,
         @Field("encrypted_signed_authentication_data") data: String,
     ): Response<ResponseBody>
+
+    /**
+     * Authorization External App
+     */
+    @FormUrlEncoded
+    @POST
+    suspend fun externalAuthorization(
+        @Url url: String,
+        @Field("code")code:String,
+        @Field("state")state:String,
+        @Field("kk_app_redirect_uri")kk_app_redirect_uri:String
+    ):Response<ResponseBody>
 
     companion object {
         fun extractQueryParameter(location: Uri, key: String): String {

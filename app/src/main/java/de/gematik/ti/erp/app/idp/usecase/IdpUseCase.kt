@@ -18,9 +18,18 @@
 
 package de.gematik.ti.erp.app.idp.usecase
 
+import android.annotation.SuppressLint
+import android.content.SharedPreferences
+import android.net.Uri
 import de.gematik.ti.erp.app.api.ApiCallException
+import de.gematik.ti.erp.app.api.Result
+import de.gematik.ti.erp.app.di.NetworkSecureSharedPreferences
+import de.gematik.ti.erp.app.idp.api.EXT_AUTH_REDIRECT_URI
+import de.gematik.ti.erp.app.idp.api.IdpService
+import de.gematik.ti.erp.app.idp.api.models.AuthenticationID
 import de.gematik.ti.erp.app.idp.repository.IdpRepository
 import de.gematik.ti.erp.app.idp.repository.SingleSignOnToken
+import de.gematik.ti.erp.app.vau.extractECPublicKey
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
@@ -42,12 +51,20 @@ class RefreshFlowException : IOException {
     val userActionRequired: Boolean
     val tokenScope: SingleSignOnToken.Scope?
 
-    constructor(userActionRequired: Boolean, tokenScope: SingleSignOnToken.Scope?, cause: Throwable) : super(cause) {
+    constructor(
+        userActionRequired: Boolean,
+        tokenScope: SingleSignOnToken.Scope?,
+        cause: Throwable
+    ) : super(cause) {
         this.userActionRequired = userActionRequired
         this.tokenScope = tokenScope
     }
 
-    constructor(userActionRequired: Boolean, tokenScope: SingleSignOnToken.Scope?, message: String) : super(message) {
+    constructor(
+        userActionRequired: Boolean,
+        tokenScope: SingleSignOnToken.Scope?,
+        message: String
+    ) : super(message) {
         this.userActionRequired = userActionRequired
         this.tokenScope = tokenScope
     }
@@ -55,11 +72,18 @@ class RefreshFlowException : IOException {
 
 class AltAuthenticationCryptoException(cause: Throwable) : IllegalStateException(cause)
 
+private const val EXT_AUTH_CODE_CHALLENGE: String = "EXT_AUTH_CODE_CHALLENGE"
+private const val EXT_AUTH_CODE_VERIFIER: String = "EXT_AUTH_CODE_VERIFIER"
+private const val EXT_AUTH_STATE: String = "EXT_AUTH_STATE"
+private const val EXT_AUTH_NONCE: String = "EXT_AUTH_NONCE"
+
 @Singleton
 class IdpUseCase @Inject constructor(
     private val repository: IdpRepository,
     private val basicUseCase: IdpBasicUseCase,
     private val altAuthUseCase: IdpAlternateAuthenticationUseCase,
+    @NetworkSecureSharedPreferences
+    private val sharedPreferences: SharedPreferences
 ) {
     private val lock = Mutex()
 
@@ -130,6 +154,87 @@ class IdpUseCase @Inject constructor(
     }
 
     /**
+     * Get all the information for the correct endpoints from the discovery document and request
+     * the external Health Insurance Company which are capable of authenticate you with their app
+     */
+    suspend fun downloadDiscoveryDocumentAndGetExternAuthenticatorIDs(): List<AuthenticationID> {
+        val initialData = basicUseCase.initializeConfigurationAndKeys()
+        return repository.fetchExternalAuthorizationIDList(
+            initialData.config.externalAuthorizationIDsEndpoint,
+            idpPukSigKey = initialData.config.certificate.extractECPublicKey()
+            //initialData.pukSigKey.jws.publicKey
+        )
+    }
+
+    /**
+     * With chosen Health Insurance Company, request IDP for Authentication information,
+     * sent as a redirect which is supposed to be fired as an Intent
+     * @param externalAuthorizationID identifier of the health insurance company
+     */
+
+    @SuppressLint("ApplySharedPref")
+    suspend fun getUniversalLinkForExternalAuthorization(externalAuthorizationID: String) :Uri{
+        val initialData = basicUseCase.initializeConfigurationAndKeys()
+
+        val redirectUri = repository.getAuthorizationRedirect(
+            url = initialData.config.thirdPartyAuthorizationEndpoint,
+            state = initialData.state,
+            codeChallenge = initialData.codeChallenge,
+            nonce = initialData.nonce,
+            kkAppId = externalAuthorizationID
+        )
+
+        val parsedUri = Uri.parse(redirectUri)
+
+        sharedPreferences.edit()
+            .putString(EXT_AUTH_STATE,parsedUri.getQueryParameter("state"))
+            .putString(EXT_AUTH_NONCE,initialData.nonce.nonce)
+            .putString(EXT_AUTH_CODE_VERIFIER,initialData.codeVerifier)
+            .putString(EXT_AUTH_CODE_CHALLENGE,initialData.codeChallenge).commit()
+
+        return parsedUri
+    }
+
+    class ExternalAuthorizationData(uri: Uri) {
+        val code = IdpService.extractQueryParameter(uri,"code")
+        val state = IdpService.extractQueryParameter(uri,"state")
+        val kkAppRedirectUri = IdpService.extractQueryParameter(uri,"kk_app_redirect_uri")
+    }
+
+    suspend fun authenticateWithExternalAppAuthorization(uri: Uri){
+
+        val externalAuthorizationData=ExternalAuthorizationData(uri)
+
+        require(externalAuthorizationData.state == sharedPreferences.getString(EXT_AUTH_STATE,""))
+
+        val initialData = basicUseCase.initializeConfigurationAndKeys()
+        val redirectStringResult = repository.postExternAppAuthorizationData(
+            url = initialData.config.thirdPartyAuthorizationEndpoint,
+            externalAuthorizationData = externalAuthorizationData
+        )
+        if(redirectStringResult is Result.Error){
+            error(redirectStringResult.exception)
+        }
+        val redirect = Uri.parse((redirectStringResult as Result.Success).data)
+
+        val redirectCodeJwe = IdpService.extractQueryParameter(redirect, "code")
+        val redirectSsoToken = IdpService.extractQueryParameter(redirect, "ssotoken")
+
+        val accessToken = basicUseCase.postCodeAndDecryptAccessToken(
+            url = initialData.config.tokenEndpoint,
+            nonce = IdpNonce(sharedPreferences.getString(EXT_AUTH_NONCE,"")!!),
+            codeVerifier = sharedPreferences.getString(EXT_AUTH_CODE_VERIFIER,"")!!,
+            code = redirectCodeJwe,
+            pukEncKey = initialData.pukEncKey,
+            pukSigKey = initialData.pukSigKey,
+            redirectUri = EXT_AUTH_REDIRECT_URI//externalAuthorizationData.kkAppRedirectUri
+        )
+
+        repository.setSingleSignOnToken(SingleSignOnToken(redirectSsoToken))
+        repository.decryptedAccessToken = accessToken
+    }
+
+    /**
      * Pairing flow fetching the sso & access token requiring the health card and generated key material.
      */
     suspend fun alternatePairingFlowWithSecureElement(
@@ -139,7 +244,8 @@ class IdpUseCase @Inject constructor(
         signWithHealthCard: suspend (hash: ByteArray) -> ByteArray
     ) = lock.withLock {
         val initialData = basicUseCase.initializeConfigurationAndKeys()
-        val challengeData = basicUseCase.challengeFlow(initialData, scope = IdpScope.BiometricPairing)
+        val challengeData =
+            basicUseCase.challengeFlow(initialData, scope = IdpScope.BiometricPairing)
         val healthCardCert = healthCardCertificate()
         val basicData = basicUseCase.basicAuthFlow(
             initialData = initialData,
@@ -178,10 +284,13 @@ class IdpUseCase @Inject constructor(
 
         try {
             privateKeyOfSecureElementEntry = (
-                KeyStore.getInstance("AndroidKeyStore")
-                    .apply { load(null) }
-                    .getEntry(aliasOfSecureElementEntry.decodeToString(), null) as KeyStore.PrivateKeyEntry
-                ).privateKey
+                    KeyStore.getInstance("AndroidKeyStore")
+                        .apply { load(null) }
+                        .getEntry(
+                            aliasOfSecureElementEntry.decodeToString(),
+                            null
+                        ) as KeyStore.PrivateKeyEntry
+                    ).privateKey
             signatureObjectOfSecureElementEntry =
                 Signature.getInstance("SHA256withECDSA", "AndroidKeyStoreBCWorkaround")
         } catch (e: Exception) {

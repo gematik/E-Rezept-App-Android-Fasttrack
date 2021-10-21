@@ -24,14 +24,17 @@ import com.squareup.moshi.Moshi
 import de.gematik.ti.erp.app.api.Result
 import de.gematik.ti.erp.app.db.entities.IdpConfiguration
 import de.gematik.ti.erp.app.di.NetworkSecureSharedPreferences
-import de.gematik.ti.erp.app.idp.api.models.Challenge
-import de.gematik.ti.erp.app.idp.api.models.IdpDiscoveryInfo
-import de.gematik.ti.erp.app.idp.api.models.PairingResponseEntry
+import de.gematik.ti.erp.app.idp.api.REDIRECT_URI
+import de.gematik.ti.erp.app.idp.api.models.*
+import de.gematik.ti.erp.app.idp.usecase.IdpNonce
+import de.gematik.ti.erp.app.idp.usecase.IdpState
+import de.gematik.ti.erp.app.idp.usecase.IdpUseCase
 import de.gematik.ti.erp.app.vau.extractECPublicKey
 import org.bouncycastle.cert.X509CertificateHolder
 import org.jose4j.base64url.Base64
 import org.jose4j.jws.JsonWebSignature
 import java.security.KeyStore
+import java.security.PublicKey
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,6 +60,9 @@ class IdpRepository @Inject constructor(
     @NetworkSecureSharedPreferences private val securePrefs: SharedPreferences
 ) {
     private val discoveryDocumentBodyAdapter = moshi.adapter(IdpDiscoveryInfo::class.java)
+    private val authenticationIDAdapter = moshi.adapter(AuthenticationIDList::class.java)
+    private val authorizationRedirectInfoAdapter =
+        moshi.adapter(AuthorizationRedirectInfo::class.java)
 
     var decryptedAccessToken: String? = null
         set(v) {
@@ -71,20 +77,23 @@ class IdpRepository @Inject constructor(
         }
         get() = securePrefs.getString(cardAccessNumberPrefKey, null)
 
-    suspend fun getSingleSignOnToken(profileName: String) = localDataSource.loadIdpAuthData(profileName).let { entity ->
-        entity.singleSignOnToken?.let { token ->
-            entity.singleSignOnTokenScope?.let { scope ->
-                SingleSignOnToken(token, scope)
+    suspend fun getSingleSignOnToken(profileName: String) =
+        localDataSource.loadIdpAuthData(profileName).let { entity ->
+            entity.singleSignOnToken?.let { token ->
+                entity.singleSignOnTokenScope?.let { scope ->
+                    SingleSignOnToken(token, scope)
+                }
             }
         }
-    }
 
     suspend fun setSingleSignOnToken(token: SingleSignOnToken) =
         localDataSource.saveSingleSignOnToken(token.token, token.scope)
 
-    suspend fun getHealthCardCertificate(profileName: String) = localDataSource.loadIdpAuthData(profileName).healthCardCertificate
+    suspend fun getHealthCardCertificate(profileName: String) =
+        localDataSource.loadIdpAuthData(profileName).healthCardCertificate
 
-    suspend fun setHealthCardCertificate(cert: ByteArray) = localDataSource.saveHealthCardCertificate(cert)
+    suspend fun setHealthCardCertificate(cert: ByteArray) =
+        localDataSource.saveHealthCardCertificate(cert)
 
     suspend fun getSingleSignOnTokenScope(profileName: String) =
         localDataSource.loadIdpAuthData(profileName).singleSignOnTokenScope
@@ -95,7 +104,9 @@ class IdpRepository @Inject constructor(
     suspend fun setPairingScope() =
         localDataSource.saveSingleSignOnToken(null, SingleSignOnToken.Scope.AlternateAuthentication)
 
-    suspend fun getAliasOfSecureElementEntry(profileName: String) = localDataSource.loadIdpAuthData(profileName).aliasOfSecureElementEntry
+    suspend fun getAliasOfSecureElementEntry(profileName: String) =
+        localDataSource.loadIdpAuthData(profileName).aliasOfSecureElementEntry
+
     suspend fun setAliasOfSecureElementEntry(alias: ByteArray) {
         require(alias.size == 32)
         localDataSource.saveSecureElementAlias(alias)
@@ -117,7 +128,11 @@ class IdpRepository @Inject constructor(
         return localDataSource.loadIdpInfo() ?: run {
             when (val r = remoteDataSource.fetchDiscoveryDocument()) {
                 is Result.Error -> throw r.exception
-                is Result.Success -> extractUncheckedIdpConfiguration(r.data).also { localDataSource.saveIdpInfo(it) }
+                is Result.Success -> extractUncheckedIdpConfiguration(r.data).also {
+                    localDataSource.saveIdpInfo(
+                        it
+                    )
+                }
             }
         }
     }
@@ -135,13 +150,28 @@ class IdpRepository @Inject constructor(
     suspend fun postToken(
         url: String,
         keyVerifier: String,
-        code: String
+        code: String,
+        redirectUri:String = REDIRECT_URI
     ) =
         remoteDataSource.postToken(
             url,
             keyVerifier = keyVerifier,
-            code = code
+            code = code,
+            redirectUri = redirectUri
         )
+
+    suspend fun fetchExternalAuthorizationIDList(
+        url: String,
+        idpPukSigKey: PublicKey,
+    ): List<AuthenticationID> {
+        val jwtResult = remoteDataSource.fetchExternalAuthorizationIDList(url)
+        if (jwtResult is Result.Success<JsonWebSignature>) {
+            return extractAuthenticationIDList(jwtResult.data.apply { key = idpPukSigKey }.payload)
+        } else {
+            throw Exception("couldn't extract authentication ID List")
+        }
+    }
+
 
     suspend fun fetchIdpPukSig(url: String) =
         remoteDataSource.fetchIdpPukSig(url)
@@ -151,6 +181,16 @@ class IdpRepository @Inject constructor(
 
     private fun parseDiscoveryDocumentBody(body: String): IdpDiscoveryInfo =
         requireNotNull(discoveryDocumentBodyAdapter.fromJson(body)) { "Couldn't parse discovery document" }
+
+    fun extractAuthenticationIDList(payload: String): List<AuthenticationID> {
+        //check certificate
+        return requireNotNull(authenticationIDAdapter.fromJson(payload)) { "Couldn't parse Authentication List" }.authenticationIDList
+    }
+
+    fun extractAuthorizationRedirectInfo(payload: String): AuthorizationRedirectInfo {
+        //check certificate
+        return requireNotNull(authorizationRedirectInfoAdapter.fromJson(payload)) { "Couldn't parse AuthorizationRedirectInfo" }
+    }
 
     fun extractUncheckedIdpConfiguration(discoveryDocument: JWSDiscoveryDocument): IdpConfiguration {
         val x5c = requireNotNull(
@@ -172,7 +212,9 @@ class IdpRepository @Inject constructor(
             pukIdpSigEndpoint = overwriteEndpoint(discoveryDocumentBody.uriPukIdpSig),
             expirationTimestamp = convertTimeStampTo(discoveryDocumentBody.expirationTime),
             issueTimestamp = convertTimeStampTo(discoveryDocumentBody.issuedAt),
-            certificate = certificateHolder
+            certificate = certificateHolder,
+            externalAuthorizationIDsEndpoint = overwriteEndpoint(discoveryDocumentBody.krankenkassenAppURL),
+            thirdPartyAuthorizationEndpoint = overwriteEndpoint(discoveryDocumentBody.thirdPartyAuthorizationURL)
         )
     }
 
@@ -187,13 +229,26 @@ class IdpRepository @Inject constructor(
         encryptedRegistrationData: String,
         token: String
     ): Result<PairingResponseEntry> =
-        remoteDataSource.postPairing(url, token = token, encryptedRegistrationData = encryptedRegistrationData)
+        remoteDataSource.postPairing(
+            url,
+            token = token,
+            encryptedRegistrationData = encryptedRegistrationData
+        )
 
-    suspend fun postAlternateAuthenticationData(
+    suspend fun postBiometricAuthenticationData(
         url: String,
         encryptedSignedAuthenticationData: String
     ): Result<String> =
-        remoteDataSource.postAuthenticationData(url, encryptedSignedAuthenticationData)
+        remoteDataSource.authorizeBiometric(url, encryptedSignedAuthenticationData)
+
+    suspend fun postExternAppAuthorizationData(
+        url: String,
+        externalAuthorizationData: IdpUseCase.ExternalAuthorizationData
+    ): Result<String> =
+        remoteDataSource.authorizeExtern(
+            url = url,
+            externalAuthorizationData = externalAuthorizationData
+        )
 
     suspend fun invalidate(profileName: String) {
         try {
@@ -226,4 +281,24 @@ class IdpRepository @Inject constructor(
     fun invalidateDecryptedAccessToken() {
         decryptedAccessToken = null
     }
+
+    suspend fun getAuthorizationRedirect(
+        url: String,
+        state: IdpState,
+        codeChallenge: String,
+        nonce: IdpNonce,
+        kkAppId: String
+    ): String {
+        val result = remoteDataSource.requestAuthorizationRedirect(url = url,externalAppId = kkAppId,
+            codeChallenge = codeChallenge,
+            nonce = nonce.nonce,
+            state = state.state
+        )
+        if (result is Result.Success) {
+            return result.data
+        } else {
+            throw (result as Result.Error).exception
+        }
+    }
+
 }

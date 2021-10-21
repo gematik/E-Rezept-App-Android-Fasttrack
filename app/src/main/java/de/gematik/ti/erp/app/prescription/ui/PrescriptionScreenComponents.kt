@@ -242,12 +242,15 @@ fun PrescriptionScreen(
                 Timber.d("Pull2Fresh: refresh prescriptions")
                 when (val r = prescriptionViewModel.refreshPrescriptions()) {
                     is Result.Error -> {
-                        (r.exception.cause as? RefreshFlowException)?.let {
+                        (r.exception.cause as? RefreshFlowException)?.let { //we are now in Unauthorized state
                             if (it.userActionRequired) {
                                 if (it.tokenScope == SingleSignOnToken.Scope.AlternateAuthentication) {
                                     showSecureHardwarePrompt = true
                                 } else {
                                     refreshState.snapTo(false)
+//                                    withContext(Dispatchers.Main){
+//                                        navController.navigate(MainNavigationScreens.AuthenticationTypeChooser.path())
+//                                    }
                                     withContext(Dispatchers.Main) {
                                         navController.navigate(MainNavigationScreens.CardWall.path())
                                     }

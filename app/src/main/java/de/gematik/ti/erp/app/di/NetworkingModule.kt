@@ -301,7 +301,9 @@ class NetworkingModule {
             CipherSuite.TLS_CHACHA20_POLY1305_SHA256
         )
         .build()
-        .let { listOf(it) }
+        .let { listOf(it,
+            ConnectionSpec.CLEARTEXT //TODO:remove before merge
+        ) }
 }
 
 private class PrefixedLogger(val prefix: String) : HttpLoggingInterceptor.Logger {

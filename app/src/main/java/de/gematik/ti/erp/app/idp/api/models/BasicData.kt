@@ -34,7 +34,31 @@ data class IdpDiscoveryInfo(
     @Json(name = "uri_puk_idp_enc") val uriPukIdpEnc: String,
     @Json(name = "uri_puk_idp_sig") val uriPukIdpSig: String,
     @Json(name = "exp") val expirationTime: Long,
-    @Json(name = "iat") val issuedAt: Long
+    @Json(name = "iat") val issuedAt: Long,
+    @Json(name = "kk_app_list_uri") val krankenkassenAppURL:String,
+    @Json(name = "third_party_authorization_endpoint") val thirdPartyAuthorizationURL:String
+)
+
+@JsonClass(generateAdapter = true)
+data class AuthenticationID(
+    @Json(name = "kk_app_name") val name:String,
+    @Json(name = "kk_app_id") val authenticationID:String
+)
+@JsonClass(generateAdapter = true)
+data class AuthenticationIDList(
+    @Json(name = "kk_app_list") val authenticationIDList:List<AuthenticationID>,
+)
+
+@JsonClass(generateAdapter = true)
+data class AuthorizationRedirectInfo(
+    @Json(name = "client_id") val clientId:String,
+    @Json(name = "state") val state:String,
+    @Json(name = "redirect_uri") val redirectUri:String,
+    @Json(name = "code_challenge") val codeChallenge: String,
+    @Json(name = "code_challenge_method") val codeChallengeMethod:String,
+    @Json(name = "response_type")val responseType:String,
+    @Json(name = "nonce")val nonce:String,
+    @Json(name = "scope")val scope:String
 )
 
 @JvmInline
